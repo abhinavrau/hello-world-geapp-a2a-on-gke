@@ -131,9 +131,32 @@ resource "kubernetes_deployment_v1" "app" {
       spec {
         service_account_name = kubernetes_service_account_v1.app.metadata[0].name
 
+        security_context {
+          run_as_non_root = true
+          run_as_user     = 1001
+          run_as_group    = 1001
+          fs_group        = 1001
+          seccomp_profile {
+            type = "RuntimeDefault"
+          }
+        }
+
         container {
           name  = var.project_name
           image = var.image_uri
+
+          security_context {
+            allow_privilege_escalation = false
+            read_only_root_filesystem  = true
+            capabilities {
+              drop = ["ALL"]
+            }
+          }
+
+          volume_mount {
+            name       = "tmp-volume"
+            mount_path = "/tmp"
+          }
 
           port {
             container_port = 8080
@@ -185,6 +208,11 @@ resource "kubernetes_deployment_v1" "app" {
             initial_delay_seconds = 15
             period_seconds        = 20
           }
+        }
+
+        volume {
+          name = "tmp-volume"
+          empty_dir {}
         }
       }
     }

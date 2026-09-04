@@ -53,12 +53,6 @@ variable "egress_subnet_cidr" {
   default     = "10.10.0.0/20"
 }
 
-variable "psc_nat_subnet_cidr" {
-  type        = string
-  description = "CIDR range for PSC NAT subnet"
-  default     = "10.100.0.0/24"
-}
-
 variable "connection_preference" {
   type        = string
   description = "Connection preference for the PSC Network Attachment (ACCEPT_AUTOMATIC or ACCEPT_MANUAL)"

@@ -26,3 +26,18 @@ output "enabled_services" {
   description = "List of enabled Google API services."
   value       = local.services
 }
+
+output "vertex_sa_email" {
+  description = "The service identity email for Vertex AI."
+  value       = google_project_service_identity.vertex_sa.email
+}
+
+output "discoveryengine_sa_email" {
+  description = "The service identity email for Discovery Engine (Gemini Enterprise)."
+  value       = google_project_service_identity.discoveryengine_sa.email
+}
+
+output "agentgateway_sa_email" {
+  description = "The service identity email for Agent Gateway (Network Services)."
+  value       = google_project_service_identity.agentgateway_sa.email
+}

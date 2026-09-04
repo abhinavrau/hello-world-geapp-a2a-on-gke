@@ -43,7 +43,3 @@ output "egress_subnet_id" {
 output "egress_net_attachment_id" {
   value = google_compute_network_attachment.egress_net_attachment.id
 }
-
-output "psc_nat_subnet_id" {
-  value = google_compute_subnetwork.psc_nat_subnet.id
-}

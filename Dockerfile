@@ -16,13 +16,23 @@ FROM python:3.12-slim
 
 RUN pip install --no-cache-dir uv==0.8.13
 
+# Create non-root user and group
+RUN groupadd -g 1001 appgroup && \
+    useradd -u 1001 -g appgroup -s /bin/sh -m appuser
+
 WORKDIR /code
 
-COPY ./pyproject.toml ./README.md ./
-
+COPY ./pyproject.toml ./uv.lock ./README.md ./
 COPY ./app ./app
 
 RUN uv sync --no-dev
+
+# Set ownership to non-root user
+RUN chown -R appuser:appgroup /code
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH="/code/.venv/bin:$PATH"
 
 ARG COMMIT_SHA=""
 ENV COMMIT_SHA=${COMMIT_SHA}
@@ -30,6 +40,8 @@ ENV COMMIT_SHA=${COMMIT_SHA}
 ARG AGENT_VERSION=0.0.0
 ENV AGENT_VERSION=${AGENT_VERSION}
 
+USER 1001:1001
+
 EXPOSE 8080
 
-CMD ["uv", "run", "uvicorn", "app.fast_api_app:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["uvicorn", "app.fast_api_app:app", "--host", "0.0.0.0", "--port", "8080"]

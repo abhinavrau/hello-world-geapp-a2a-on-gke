@@ -23,12 +23,12 @@ resource "google_storage_bucket" "logs_data_bucket" {
 
 # BigQuery dataset for telemetry external tables
 resource "google_bigquery_dataset" "telemetry_dataset" {
-  project       = var.project_id
-  dataset_id    = replace("${var.project_name}_telemetry", "-", "_")
-  friendly_name = "${var.project_name} Telemetry"
-  location                    = var.region
-  description                 = "Dataset for GenAI telemetry data stored in GCS"
-  delete_contents_on_destroy  = true
+  project                    = var.project_id
+  dataset_id                 = replace("${var.project_name}_telemetry", "-", "_")
+  friendly_name              = "${var.project_name} Telemetry"
+  location                   = var.region
+  description                = "Dataset for GenAI telemetry data stored in GCS"
+  delete_contents_on_destroy = true
 }
 
 # BigQuery connection for accessing GCS telemetry data

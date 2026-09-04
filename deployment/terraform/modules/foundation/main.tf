@@ -54,6 +54,20 @@ resource "google_project_service_identity" "vertex_sa" {
   depends_on = [google_project_service.services]
 }
 
+resource "google_project_service_identity" "discoveryengine_sa" {
+  provider   = google-beta
+  project    = var.project_id
+  service    = "discoveryengine.googleapis.com"
+  depends_on = [google_project_service.services]
+}
+
+resource "google_project_service_identity" "agentgateway_sa" {
+  provider   = google-beta
+  project    = var.project_id
+  service    = "networkservices.googleapis.com"
+  depends_on = [google_project_service.services]
+}
+
 resource "google_project_iam_member" "default_compute_sa_cloudbuild_builder" {
   project    = var.project_id
   role       = "roles/cloudbuild.builds.builder"

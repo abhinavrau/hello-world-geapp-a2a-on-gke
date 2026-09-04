@@ -58,16 +58,6 @@ resource "google_compute_network_attachment" "egress_net_attachment" {
   subnetworks           = [google_compute_subnetwork.egress_subnet.id]
 }
 
-# PSC NAT Subnet for Private Service Connect Service Attachment
-resource "google_compute_subnetwork" "psc_nat_subnet" {
-  name          = "${var.project_name}-psc-nat-subnet"
-  project       = var.project_id
-  region        = var.region
-  network       = google_compute_network.gke_network.id
-  ip_cidr_range = var.psc_nat_subnet_cidr
-  purpose       = "PRIVATE_SERVICE_CONNECT"
-}
-
 # Cloud Router for NAT gateway
 resource "google_compute_router" "router" {
   name    = "${var.project_name}-router"
@@ -86,7 +76,7 @@ resource "google_compute_router_nat" "nat" {
   source_subnetwork_ip_ranges_to_nat = "ALL_SUBNETWORKS_ALL_IP_RANGES"
 }
 
-# Firewall rule to allow internal traffic
+# Firewall rule to allow internal traffic across VPC subnets
 resource "google_compute_firewall" "allow_internal" {
   name    = "${var.project_name}-allow-internal"
   network = google_compute_network.gke_network.name
@@ -102,7 +92,11 @@ resource "google_compute_firewall" "allow_internal" {
     protocol = "icmp"
   }
 
-  source_ranges = ["10.0.0.0/8"]
+  source_ranges = [
+    var.gke_subnet_cidr,
+    var.proxy_subnet_cidr,
+    var.egress_subnet_cidr,
+  ]
 }
 
 # Firewall rule to allow proxy-only subnet to reach GKE pods on port 8080
@@ -136,9 +130,9 @@ resource "google_compute_firewall" "allow_egress_gateway" {
   source_ranges = [google_compute_subnetwork.egress_subnet.ip_cidr_range]
 }
 
-# Firewall rule to allow health checks and traffic from PSC NAT subnet
-resource "google_compute_firewall" "allow_psc_nat" {
-  name    = "${var.project_name}-allow-psc-nat"
+# Firewall rule to allow Google Cloud health checks to reach GKE pods on port 8080
+resource "google_compute_firewall" "allow_health_checks" {
+  name    = "${var.project_name}-allow-health-checks"
   network = google_compute_network.gke_network.name
   project = var.project_id
 
@@ -148,8 +142,7 @@ resource "google_compute_firewall" "allow_psc_nat" {
   }
 
   source_ranges = [
-    google_compute_subnetwork.psc_nat_subnet.ip_cidr_range,
     "35.191.0.0/16",
-    "130.211.0.0/22"
+    "130.211.0.0/22",
   ]
 }

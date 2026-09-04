@@ -110,6 +110,15 @@ module "gke" {
   depends_on = [module.foundation_workload, module.networking]
 }
 
+# Grant application SA object-level access to the telemetry logs bucket
+resource "google_storage_bucket_iam_member" "app_sa_logs_access" {
+  count    = var.enable_observability ? 1 : 0
+  provider = google.workload
+  bucket   = module.observability[0].logs_bucket_name
+  role     = "roles/storage.objectUser"
+  member   = "serviceAccount:${module.gke.app_sa_email}"
+}
+
 # ==============================================================================
 # Phase 5: Kubernetes Workload (Namespace, Standalone NEG, Deployment)
 # ==============================================================================

@@ -1,0 +1,18 @@
+{
+  "eval_cases": [
+    {
+      "eval_case_id": "hello_world_query",
+      "prompt": {
+        "role": "user",
+        "parts": [{"text": "Hello! Who are you and where do you run?"}]
+      }
+    },
+    {
+      "eval_case_id": "personalized_greeting",
+      "prompt": {
+        "role": "user",
+        "parts": [{"text": "Please say hello to Alice."}]
+      }
+    }
+  ]
+}

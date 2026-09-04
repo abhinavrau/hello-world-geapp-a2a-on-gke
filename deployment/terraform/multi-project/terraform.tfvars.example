@@ -1,0 +1,15 @@
+# Multi-Project Terraform Configuration Example
+workload_project_id   = "your-workload-project-id"   # Project A (GKE, VPC, ILB, Certs, PSC Attachment)
+consumer_project_id   = "your-consumer-project-id"   # Project B (Gemini Enterprise App, Agent Gateway, Agent Registry)
+dns_project_id        = "your-dns-project-id"        # Project hosting Cloud DNS zone
+project_name          = "hello-world-a2a"
+region                = "us-central1"
+egress_gateway_region = "us-central1"
+domain_name           = "hello-world-a2a.example.com"
+dns_zone_name         = "my-cloud-dns-zone"
+enable_create_dns_zone = false
+enable_agent_gateway  = true
+enable_observability  = true
+enable_k8s_workload   = true
+iap_enforcement_mode  = "DRY_RUN"
+fail_open             = true

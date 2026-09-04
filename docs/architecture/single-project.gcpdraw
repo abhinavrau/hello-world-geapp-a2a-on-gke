@@ -1,0 +1,75 @@
+meta {
+  title "Hello World A2A on GKE"
+}
+
+elements {
+  card users as user {
+    name "User"
+  }
+
+  gcp {
+    card generic as assistant {
+      name "Gemini Enterprise App"
+      icon_url "https://drive.google.com/file/d/1Fp_dxSORQtkMZVgTJlxVg7hFqJpIVqlZ/view"
+    }
+
+    group gemini_enterprise {
+      name "Agent Platform"
+
+      card generic as agent_reg {
+        name "Agent Registry"
+        icon_url "https://drive.google.com/file/d/1ZvHa0WRQuiHPCcCfOsXkM5vVquc0x2U9/view"
+      }
+
+      card api_gateway as agent_gateway {
+        name "Agent Gateway"
+      }
+    }
+
+    group vpc {
+      name "Customer VPC"
+
+      group gateway_region {
+        name "Gateway Region"
+
+        card network as net_attachment {
+          name "PSC Attachment"
+        }
+      }
+
+      group gke_region {
+        name "GKE Region"
+
+        group load_balancer {
+          name "Internal ALB"
+
+          card load_balancer as alb {
+            name "HTTPS ALB"
+          }
+        }
+
+        group gke_cluster {
+          name "GKE Cluster"
+
+          stacked_card gke as gke_pods {
+            name "A2A Agent"
+          }
+        }
+      }
+
+      card dns as cloud_dns {
+        name "Cloud DNS"
+      }
+    }
+  }
+}
+
+paths {
+  user --> assistant
+  assistant --> agent_reg
+  assistant --> agent_gateway
+  agent_gateway --> net_attachment
+  agent_gateway ..> cloud_dns
+  net_attachment --> alb
+  alb --> gke_pods
+}

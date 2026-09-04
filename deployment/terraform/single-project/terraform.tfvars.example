@@ -1,0 +1,15 @@
+# ==============================================================================
+# Terraform Variables Example Configuration for Single-Project Deployment
+# Copy this file to terraform.tfvars and update with your own values.
+# ==============================================================================
+
+project_id            = "your-project-id"
+project_name          = "hello-world-a2a"
+region                = "us-central1"
+egress_gateway_region = "us-central1"
+domain_name           = "hello-world-a2a.example.com"
+dns_zone_name         = "my-cloud-dns-zone"
+alb_ip_address        = "10.0.0.10"
+network_prefix        = "10.0.0.0/20"
+proxy_subnetwork_cidr = "10.200.0.0/24"
+egress_subnetwork_cidr = "10.10.0.0/20"

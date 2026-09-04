@@ -1,0 +1,12 @@
+apiVersion: networking.gke.io/v1
+kind: ServiceAttachment
+metadata:
+  name: hello-world-a2a-attachment
+  namespace: hello-world-a2a
+spec:
+  connectionPreference: ACCEPT_AUTOMATIC
+  natSubnets:
+  - hello-world-a2a-psc-nat-subnet
+  resourceRef:
+    kind: Service
+    name: hello-world-a2a

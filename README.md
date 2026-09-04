@@ -86,6 +86,8 @@ Separates the **Workload Project** (GKE cluster, VPC, Regional Internal ALB, TLS
 │   ├── adr/                                # Architectural Decision Records (0001, 0002, 0003)
 │   └── production-security-guide.md        # Hardening guide (Active IAP, Model Armor, VPC-SC)
 ├── scripts/
+│   ├── register_single_project.sh          # Automated single-project registration in Agent Registry & GE
+│   ├── validate_single_project.sh          # End-to-end single-project health checks & StreamAssist verification
 │   ├── register_multi_project.sh           # Automated multi-project registration in Agent Registry & GE
 │   └── validate_multi_project.sh           # End-to-end multi-project health checks & StreamAssist verification
 └── tests/                                  # Unit and integration test suites
@@ -99,8 +101,9 @@ Separates the **Workload Project** (GKE cluster, VPC, Regional Internal ALB, TLS
 For local sandboxes and self-contained testing within a single GCP project:
 
 ```bash
-# 1. Provision Infrastructure
+# 1. Provision Single-Project Infrastructure
 cd deployment/terraform/single-project
+cp terraform.tfvars.example terraform.tfvars
 terraform init && terraform apply -auto-approve
 
 # 2. Build & Deploy Container Image
@@ -108,7 +111,11 @@ cd ../../..
 IMAGE_URI="us-central1-docker.pkg.dev/${PROJECT_ID}/hello-world-a2a/hello-world-a2a:v1"
 gcloud builds submit --project="${PROJECT_ID}" --tag "${IMAGE_URI}" .
 
-# 3. Follow Full Deployment & Registration Runbook
+# 3. Register Service in Agent Registry & Gemini Enterprise
+./scripts/register_single_project.sh
+
+# 4. Run End-to-End Validation
+./scripts/validate_single_project.sh
 ```
 👉 *Read the full [Single-Project Architecture & Deployment Guide](docs/architecture/single-project.md).*
 
@@ -120,6 +127,7 @@ For enterprise architectures separating workload hosting from Gemini Enterprise:
 ```bash
 # 1. Provision Multi-Project Infrastructure (Workload + Consumer Projects)
 cd deployment/terraform/multi-project
+cp terraform.tfvars.example terraform.tfvars
 terraform init && terraform apply -auto-approve
 
 # 2. Build & Deploy Container Image to Workload Project

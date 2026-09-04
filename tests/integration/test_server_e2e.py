@@ -40,6 +40,8 @@ from requests.exceptions import RequestException
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+pytestmark = pytest.mark.integration
+
 BASE_URL = "http://127.0.0.1:8000"
 RUN_SSE_URL = BASE_URL + "/run_sse"
 A2A_RPC_URL = BASE_URL + "/a2a/app/"

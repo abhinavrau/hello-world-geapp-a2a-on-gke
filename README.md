@@ -1,6 +1,6 @@
 # Secure Agent-to-Agent (A2A) on GKE for Gemini Enterprise
 
-A production-ready reference implementation demonstrating how to deploy, govern, and expose secure **Agent-to-Agent (A2A)** microservices on **Google Kubernetes Engine (GKE)** to **Gemini Enterprise (Discovery Engine)** applications.
+A sample reference implementation demonstrating how to deploy, govern, and securely expose  **Agent-to-Agent (A2A)** microservices on **Google Kubernetes Engine (GKE)** to **Gemini Enterprise (Discovery Engine)** applications.
 
 This solution integrates **GKE Autopilot**, **Regional Internal Application Load Balancers (ALBs)** with Standalone Network Endpoint Groups (NEGs), **Google Certificate Manager**, and **Agent Gateway (Egress Gateway)** across both single-project and multi-project enterprise architectures.
 
@@ -10,7 +10,7 @@ This solution integrates **GKE Autopilot**, **Regional Internal Application Load
 
 This repository supports two architectural topologies depending on your organization's landing zone model:
 
-### 1. Single-Project Architecture (Development & Prototyping)
+### 1. Single-Project Architecture 
 All infrastructure components—GKE cluster, VPC network, Regional Internal ALB, Certificate Manager, Agent Gateway, Agent Registry, and Gemini Enterprise—reside within a single Google Cloud project.
 
 ![Single-Project Architecture](./docs/ge-app-a2a-gke.png)
@@ -19,7 +19,7 @@ All infrastructure components—GKE cluster, VPC network, Regional Internal ALB,
 
 ---
 
-### 2. Multi-Project Architecture (Enterprise Production Landing Zone)
+### 2. Multi-Project Architecture 
 Separates the **Workload Project** (GKE cluster, VPC, Regional Internal ALB, TLS certificates, and Private Service Connect Network Attachment) from the **Consumer Project** (Gemini Enterprise App, Agent Gateway, Agent Registry, and Cloud DNS).
 
 ![Multi-Project Architecture](./docs/ge-app-a2a-gke-multi-project.png)

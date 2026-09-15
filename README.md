@@ -32,7 +32,7 @@ Separates the **Workload Project** (GKE cluster, VPC, Regional Internal ALB, TLS
 
 | Architectural Dimension | Single-Project Topology | Multi-Project Topology |
 | :--- | :--- | :--- |
-| **Recommended Use Case** | Fast prototyping, sandbox development, self-contained demos | Enterprise production, centralized AI platforms, multi-tenant organizations |
+| **Recommended Use Case** | Fast prototyping, sandbox development, self-contained demos |  Centralized AI platforms, multi-tenant organizations |
 | **Workload Hosting** | Project A (`your-project-id`) | Project A (`your-workload-project-id`) |
 | **AI Platform / Gemini Enterprise** | Project A (`your-project-id`) | Project B (`your-consumer-project-id`) |
 | **Agent Gateway Location** | Project A (attached to local VPC) | Project B (attached to Project A via cross-project PSC) |

@@ -33,3 +33,9 @@ variable "image_uri" {
   description = "Container image URI for initial deployment"
   default     = "us-docker.pkg.dev/cloudrun/container/hello"
 }
+
+variable "domain_name" {
+  type        = string
+  description = "Fully qualified domain name for the A2A agent (used to set APP_URL in pod env for Agent Card)"
+  default     = ""
+}

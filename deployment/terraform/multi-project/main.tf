@@ -128,6 +128,7 @@ module "k8s_app" {
   source           = "../modules/k8s-app"
   project_id       = var.workload_project_id
   project_name     = var.project_name
+  domain_name      = var.domain_name
   logs_bucket_name = var.enable_observability ? module.observability[0].logs_bucket_name : ""
 
   depends_on = [module.gke]

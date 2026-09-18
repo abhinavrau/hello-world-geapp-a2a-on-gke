@@ -25,14 +25,16 @@ flowchart TD
     subgraph ConsumerProj["Consumer Project (Project B: your-consumer-project-id)"]
         subgraph GE["Gemini Enterprise (Discovery Engine)"]
             User(["👤 User Chat / StreamAssist"]) --> Assistant["GE App (Discovery Engine)<br><i>Engine: hello-world-a2a</i>"]
-            Assistant -->|1. Imported Agent Resolution| AgentReg["Agent Registry<br><i>projects/your-consumer-project-id/locations/global</i>"]
+            Assistant -->|1. Imported Agent Resolution| ConsumerAgentReg["Consumer Agent Registry<br><i>projects/your-consumer-project-id/locations/global/services</i>"]
             Assistant -->|2. Envoy SWP Routing| AGW["Agent Gateway (Egress)<br><b>Region: us-central1</b><br>• Mode: AGENT_TO_ANYWHERE<br>• IAP Authz Policy (DRY_RUN)<br>• SA: service-CONSUMER_PROJECT_NUM@gcp-sa-agentgateway"]
         end
         DNS["Cloud DNS Managed Zone<br><i>your-dns-zone-name</i><br>• FQDN ➔ 10.0.0.10<br>• DNS-01 Challenge CNAME"]
+        RegScript["scripts/register_multi_project.sh<br>• Cross-Project Service Registration<br>• Binds importedAgent to GE Assistant"]
     end
 
     subgraph WorkloadProj["Workload Project (Project A: your-workload-project-id)"]
-        NetAttach["PSC Network Attachment (us-central1)<br><i>hello-world-a2a-net-attachment-egress</i><br>• Subnet: 10.10.0.0/20<br>• <b>connection_preference: ACCEPT_AUTOMATIC</b>"]
+        NetAttach["PSC Network Attachment (us-central1)<br><i>hello-world-a2a-net-attachment-egress</i><br>• Subnet: 10.10.0.0/20<br>• <b>connection_preference: ACCEPT_MANUAL</b>"]
+        WorkloadAgentReg["Local Agent Registry (Project A)<br><i>projects/your-workload-project-id/locations/us-central1/agents</i>"]
 
         subgraph GKERegion["Region: us-central1 (Workload Region)"]
             subgraph LoadBalancer["Regional Internal HTTPS Load Balancer"]
@@ -47,13 +49,17 @@ flowchart TD
             end
 
             subgraph GKECluster["GKE Autopilot Cluster (hello-world-a2a)"]
+                Ctrl["GKE App Hub / Agent Controller<br><i>registry.gke.io/functional-type: AGENT</i>"]
                 NEG["Standalone NEGs (Multi-Zone)<br><i>hello-world-a2a-neg</i>"]
-                Pods["A2A Container Pods<br><i>FastAPI / ADK (Port 8080)</i>"]
+                Pods["A2A Container Pods<br><i>FastAPI / ADK (Port 8080)</i><br><code>APP_URL=https://DOMAIN_NAME</code>"]
                 BackendSvc -->|Direct Pod IP Routing| NEG --> Pods
+                Ctrl -.->|In-Cluster Scrape: /.well-known/agent-card.json| Pods
             end
         end
     end
 
+    Ctrl ==>|Local In-Cluster Auto-Registration| WorkloadAgentReg
+    RegScript -.->|Cross-Project Service Registration| ConsumerAgentReg
     AGW -->|3. Cross-Project PSC Interface Link| NetAttach
     NetAttach -->|4. Global VPC Backbone Routing| FWR
     DNS -.->|DNS-01 Authorization Challenge| Proxy
@@ -74,6 +80,9 @@ The multi-project design establishes a zero-trust cross-project boundary:
    - In Project B, Discovery Engine Service Agent (`service-CONSUMER_PROJECT_NUM@gcp-sa-discoveryengine.iam.gserviceaccount.com`) is granted the custom role `agent_gateway_ge_access` to query the local Agent Gateway and Agent Registry.
 4. **Governed Egress & Authorization Extensions**:
    - All outgoing requests from Gemini Enterprise are intercepted by Project B's Agent Gateway and evaluated against IAP / Model Armor authorization policies before entering Project A's VPC.
+5. **Cross-Project Ingestion Boundary vs. Local Auto-Registration**:
+   - GKE In-Cluster Agent Auto-Registration operates within the scope of the project hosting the cluster (Workload Project A). The GKE runtime controller automatically indexes the workload and discovers skills into Project A's local regional Agent Registry (`projects/your-workload-project-id/locations/us-central1/agents`).
+   - Because the in-cluster controller cannot cross GCP organizational/project IAM boundaries to publish into Consumer Project B, `scripts/register_multi_project.sh` bridges the cross-project gap. It registers the service endpoint (`https://${DOMAIN_NAME}/a2a/app`) into Project B's Agent Registry and binds it to Project B's Discovery Engine Assistant.
 
 ---
 
@@ -185,7 +194,9 @@ The multi-project Terraform configuration (`deployment/terraform/multi-project`)
 
 ### Step 3: Register Agent across Projects into Gemini Enterprise
 
-Execute the automated multi-project registration script:
+In the multi-project topology:
+- **Workload Project A**: The GKE controller automatically discovers the workload via `registry.gke.io/functional-type: "AGENT"` and registers it into Project A's local regional Agent Registry (`projects/${WORKLOAD_PROJECT_ID}/locations/${GKE_REGION}/agents/...`).
+- **Consumer Project B**: To bridge the organizational boundary and make the agent accessible to Gemini Enterprise in Consumer Project B, execute the cross-project registration script:
 
 ```bash
 ./scripts/register_multi_project.sh
@@ -267,3 +278,18 @@ cd deployment/terraform/multi-project
 export GOOGLE_OAUTH_ACCESS_TOKEN="$(gcloud auth print-access-token)"
 terraform destroy -auto-approve
 ```
+
+---
+
+## 🧠 Architectural Insights & Lessons Learned
+
+### 1. Cross-Project PSC Network Attachment Regional Co-Location
+- **The Rule**: The Egress Agent Gateway in Consumer Project B and the PSC Network Attachment & Regional Internal ALB in Workload Project A **must reside within the same Google Cloud region** (`us-central1`).
+- **The Data Plane Constraint**: PSC Network Attachment dynamic interfaces do not route across regions to a Regional Internal ALB in another region. Cross-region attempts fail with `HTTP 504: upstream request timeout`.
+
+### 2. Cross-Project Agent Ingestion Demarcation
+- **The Boundary**: GKE in-cluster auto-registration discovers and registers workloads strictly within the local GCP project (`your-workload-project-id`).
+- **The Federation Model**: Workload teams retain full local cataloging and live skill inspection within their own project (`projects/your-workload-project-id/locations/us-central1/agents`), while the centralized AI Platform team governs consumer-side access and agent import in Consumer Project B via declarative cross-project registration (`scripts/register_multi_project.sh`).
+
+### 3. Public Domain Routing over Private PSC Link
+- **The Pattern**: The public domain name configured in Cloud DNS maps to the private RFC 1918 ALB VIP (`10.0.0.10`). The Agent Gateway resolves the domain using Google's public DNS infrastructure while transmitting the actual encrypted request payloads through the private cross-project PSC dynamic interface.

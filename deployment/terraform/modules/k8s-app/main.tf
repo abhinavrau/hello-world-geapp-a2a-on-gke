@@ -110,7 +110,16 @@ resource "kubernetes_deployment_v1" "app" {
     name      = var.project_name
     namespace = kubernetes_namespace_v1.app.metadata[0].name
     labels = {
-      app = var.project_name
+      app                             = var.project_name
+      "registry.gke.io/functional-type" = "AGENT"
+    }
+    annotations = {
+      "a2a-protocol.org/agent-card" = <<-EOT
+        card:
+          endpoint: /.well-known/agent-card.json
+          protocol: HTTP
+          port: 8080
+      EOT
     }
   }
 
@@ -171,6 +180,14 @@ resource "kubernetes_deployment_v1" "app" {
           env {
             name  = "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"
             value = "NO_CONTENT"
+          }
+
+          dynamic "env" {
+            for_each = var.domain_name != "" ? [1] : []
+            content {
+              name  = "APP_URL"
+              value = "https://${var.domain_name}"
+            }
           }
 
           resources {

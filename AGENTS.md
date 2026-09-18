@@ -50,6 +50,9 @@ See [`README.md`](README.md) for full infrastructure architecture, deployment st
 | **GKE Standalone NEG** | Reference only active zones (`local.neg_zones`) in Backend Service | `404 Not Found` during apply (NEGs only exist in zones with scheduled Pods) |
 | **Certificate Manager** | Google-managed regional certificates with DNS-01 Cloud DNS authorization | TLS handshake failures / untrusted cert errors on Agent Gateway |
 | **Agent Gateway Security** | Attach Authorization Extension & Policy to Egress Gateway (`DRY_RUN` in dev, `ENFORCE` in prod) | `HTTP 403: Access denied (default_denied)` on Agent Gateway invocation |
+| **GKE Auto-Registration** | Deployment label `registry.gke.io/functional-type = "AGENT"` and annotation `a2a-protocol.org/agent-card` | GKE runtime controller skips workload introspection; agent skills not indexed |
+| **Agent Advertised URL** | Container env `APP_URL = "https://${var.domain_name}"` in `modules/k8s-app` | Introspected card advertises pod IP / localhost; Agent Gateway unable to route calls |
+| **A2A Card Endpoints** | Serve dynamic cards on both `/.well-known/agent-card.json` and `/a2a/app/.well-known/agent-card.json` | In-cluster scrape returns 404; auto-registration fails to ingest skills |
 
 ---
 
@@ -95,6 +98,7 @@ See [`README.md`](README.md) for full infrastructure architecture, deployment st
 
 - **Infrastructure Provisioning**: [`README.md` (Step 1)](README.md#step-1-provision-infrastructure-with-modular-terraform)
 - **Container Rollout**: [`README.md` (Step 2)](README.md#step-2-build-and-deploy-the-container-to-gke)
-- **Agent Registry and Discovery Engine**: [`README.md` (Steps 3 and 4)](README.md#step-3-register-the-service-in-agent-registry)
+- **Agent Registry and Discovery Engine**: [`README.md` (Step 3)](README.md#step-3-register-service-in-agent-registry--gemini-enterprise)
 - **Verification**: [`README.md` (Verification)](README.md#-verification--testing)
 - **Production Hardening**: [`docs/production-security-guide.md`](docs/production-security-guide.md)
+- **GKE Auto-Registration & Dynamic Skill Discovery**: [`docs/adr/0004-gke-agent-auto-registration.md`](docs/adr/0004-gke-agent-auto-registration.md)

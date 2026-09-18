@@ -48,3 +48,11 @@ _Avoid_: Frontend project, Client project
 A network architecture where an Agent Gateway in the Consumer Project attaches its egress interfaces to a PSC Network Attachment in the Workload Project with explicit project acceptance whitelisting and scoped `roles/compute.networkUser` IAM permissions.
 _Avoid_: Cross-project VPC peering, Shared VPC egress
 
+**In-Cluster Agent Auto-Registration**:
+Automated discovery performed by the GKE cluster runtime controller that introspects workloads labeled `registry.gke.io/functional-type: "AGENT"` and queries `a2a-protocol.org/agent-card` to sync skills and metadata directly to Agent Registry.
+_Avoid_: manual agent card upload, static service registration
+
+**Agent Registry Ingested Agent**:
+A native agent entity in Agent Registry automatically discovered and synchronized from runtime compute workloads with rich skill and capability introspection.
+_Avoid_: uninspected service, opaque endpoint
+

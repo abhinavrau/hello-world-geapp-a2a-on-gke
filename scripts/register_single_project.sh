@@ -45,28 +45,60 @@ echo "========================================================================"
 AUTH_TOKEN="$(gcloud auth print-access-token)"
 
 echo ""
-echo "Step 1: Registering / Updating Service in Agent Registry (${PROJECT_ID})..."
-if gcloud alpha agent-registry services describe "${PROJECT_NAME}" --location="${GKE_REGION}" --project="${PROJECT_ID}" >/dev/null 2>&1; then
-  echo "Agent Registry service already exists. Updating interface URL..."
-  gcloud alpha agent-registry services update "${PROJECT_NAME}" \
-    --location="${GKE_REGION}" \
-    --interfaces="url=https://${DOMAIN_NAME}/a2a/app,protocolBinding=jsonrpc" \
-    --project="${PROJECT_ID}"
-else
-  echo "Creating Agent Registry service..."
-  gcloud alpha agent-registry services create "${PROJECT_NAME}" \
-    --location="${GKE_REGION}" \
-    --display-name="Hello World A2A Service" \
-    --description="GKE Hosted A2A Service in ${PROJECT_ID}" \
-    --agent-spec-type=no-spec \
-    --interfaces="url=https://${DOMAIN_NAME}/a2a/app,protocolBinding=jsonrpc" \
-    --project="${PROJECT_ID}"
-fi
+echo "Step 1: Checking for GKE Auto-Registered Agent in Agent Registry (${PROJECT_ID})..."
+AGENT_REGISTRY_URN=""
+IS_AUTO_REGISTERED=false
+MAX_RETRIES=12
+RETRY_INTERVAL=5
 
-AGENT_REGISTRY_URN=$(gcloud alpha agent-registry services describe "${PROJECT_NAME}" \
-  --location="${GKE_REGION}" \
-  --project="${PROJECT_ID}" \
-  --format="value(registryResource)")
+for ((i=1; i<=MAX_RETRIES; i++)); do
+  AGENT_MATCH=$(curl -s -H "Authorization: Bearer ${AUTH_TOKEN}" \
+    -H "X-Goog-User-Project: ${PROJECT_ID}" \
+    "https://agentregistry.googleapis.com/v1alpha/projects/${PROJECT_ID}/locations/${GKE_REGION}/agents" \
+    | jq -r '.agents[]? | select(.displayName=="root_agent" or .displayName=="hello-world-a2a" or (.name | contains("hello-world-a2a")) or (.description | contains("ADK")) or (.description | contains("GKE"))) | .name' 2>/dev/null | head -n 1)
+
+  if [ -z "${AGENT_MATCH}" ] || [ "${AGENT_MATCH}" = "null" ]; then
+    AGENT_MATCH=$(curl -s -H "Authorization: Bearer ${AUTH_TOKEN}" \
+      -H "X-Goog-User-Project: ${PROJECT_ID}" \
+      "https://agentregistry.googleapis.com/v1alpha/projects/${PROJECT_ID}/locations/global/agents" \
+      | jq -r '.agents[]? | select(.displayName=="root_agent" or .displayName=="hello-world-a2a" or (.name | contains("hello-world-a2a")) or (.description | contains("ADK")) or (.description | contains("GKE"))) | .name' 2>/dev/null | head -n 1)
+  fi
+
+  if [ -n "${AGENT_MATCH}" ] && [ "${AGENT_MATCH}" != "null" ]; then
+    AGENT_REGISTRY_URN="//agentregistry.googleapis.com/${AGENT_MATCH}"
+    echo "Found GKE auto-registered Agent: ${AGENT_REGISTRY_URN}"
+    IS_AUTO_REGISTERED=true
+    break
+  fi
+
+  echo "Waiting for GKE cluster runtime controller to ingest agent card (attempt ${i}/${MAX_RETRIES})..."
+  sleep "${RETRY_INTERVAL}"
+done
+
+if [ -z "${AGENT_REGISTRY_URN}" ]; then
+  echo "GKE auto-registered agent not yet detected. Falling back to explicit Service registration..."
+  if gcloud alpha agent-registry services describe "${PROJECT_NAME}" --location="${GKE_REGION}" --project="${PROJECT_ID}" >/dev/null 2>&1; then
+    echo "Agent Registry service already exists. Updating interface URL..."
+    gcloud alpha agent-registry services update "${PROJECT_NAME}" \
+      --location="${GKE_REGION}" \
+      --interfaces="url=https://${DOMAIN_NAME}/a2a/app,protocolBinding=jsonrpc" \
+      --project="${PROJECT_ID}"
+  else
+    echo "Creating Agent Registry service..."
+    gcloud alpha agent-registry services create "${PROJECT_NAME}" \
+      --location="${GKE_REGION}" \
+      --display-name="Hello World A2A Service" \
+      --description="GKE Hosted A2A Service in ${PROJECT_ID}" \
+      --agent-spec-type=no-spec \
+      --interfaces="url=https://${DOMAIN_NAME}/a2a/app,protocolBinding=jsonrpc" \
+      --project="${PROJECT_ID}"
+  fi
+
+  AGENT_REGISTRY_URN=$(gcloud alpha agent-registry services describe "${PROJECT_NAME}" \
+    --location="${GKE_REGION}" \
+    --project="${PROJECT_ID}" \
+    --format="value(registryResource)")
+fi
 
 echo "Agent Registry URN: ${AGENT_REGISTRY_URN}"
 
@@ -131,21 +163,57 @@ sed -i "s/DOMAIN_PLACEHOLDER/${DOMAIN_NAME}/g" "${AGENT_CARD_FILE}"
 
 echo ""
 echo "Step 4: Importing Agent into Discovery Engine Assistant..."
-IMPORT_RESPONSE=$(curl -s -X POST \
-  -H "Authorization: Bearer ${AUTH_TOKEN}" \
-  -H "X-Goog-User-Project: ${PROJECT_ID}" \
-  -H "Content-Type: application/json" \
-  "https://discoveryengine.googleapis.com/v1alpha/projects/${PROJECT_NUM}/locations/global/collections/default_collection/engines/${ENGINE_ID}/assistants/default_assistant/agents" \
-  -d '{
-    "displayName": "Hello World GKE",
-    "description": "Greets users and provides personalized greetings via GKE and Agent Gateway in '"${PROJECT_ID}"'",
-    "importedAgent": {
-      "agent": "'"${AGENT_REGISTRY_URN}"'"
-    },
-    "a2aAgentDefinition": {
-      "jsonAgentCard": "'"$(cat "${AGENT_CARD_FILE}" | jq -c . | jq -R . | sed 's/^"//; s/"$//')"' "
-    }
-  }')
+if [ "${IS_AUTO_REGISTERED}" = "true" ]; then
+  echo "Importing auto-registered Agent directly from Agent Registry..."
+  IMPORT_RESPONSE=$(curl -s -X POST \
+    -H "Authorization: Bearer ${AUTH_TOKEN}" \
+    -H "X-Goog-User-Project: ${PROJECT_ID}" \
+    -H "Content-Type: application/json" \
+    "https://discoveryengine.googleapis.com/v1alpha/projects/${PROJECT_NUM}/locations/global/collections/default_collection/engines/${ENGINE_ID}/assistants/default_assistant/agents" \
+    -d '{
+      "displayName": "Hello World GKE",
+      "description": "Greets users and provides personalized greetings via GKE and Agent Gateway in '"${PROJECT_ID}"'",
+      "importedAgent": {
+        "agent": "'"${AGENT_REGISTRY_URN}"'"
+      }
+    }')
+
+  # If Discovery Engine requires explicit a2aAgentDefinition, fallback to including it
+  if echo "${IMPORT_RESPONSE}" | grep -qi "error"; then
+    echo "Direct import returned notice. Retrying with explicit Agent Card definition..."
+    IMPORT_RESPONSE=$(curl -s -X POST \
+      -H "Authorization: Bearer ${AUTH_TOKEN}" \
+      -H "X-Goog-User-Project: ${PROJECT_ID}" \
+      -H "Content-Type: application/json" \
+      "https://discoveryengine.googleapis.com/v1alpha/projects/${PROJECT_NUM}/locations/global/collections/default_collection/engines/${ENGINE_ID}/assistants/default_assistant/agents" \
+      -d '{
+        "displayName": "Hello World GKE",
+        "description": "Greets users and provides personalized greetings via GKE and Agent Gateway in '"${PROJECT_ID}"'",
+        "importedAgent": {
+          "agent": "'"${AGENT_REGISTRY_URN}"'"
+        },
+        "a2aAgentDefinition": {
+          "jsonAgentCard": "'"$(cat "${AGENT_CARD_FILE}" | jq -c . | jq -R . | sed 's/^"//; s/"$//')"' "
+        }
+      }')
+  fi
+else
+  IMPORT_RESPONSE=$(curl -s -X POST \
+    -H "Authorization: Bearer ${AUTH_TOKEN}" \
+    -H "X-Goog-User-Project: ${PROJECT_ID}" \
+    -H "Content-Type: application/json" \
+    "https://discoveryengine.googleapis.com/v1alpha/projects/${PROJECT_NUM}/locations/global/collections/default_collection/engines/${ENGINE_ID}/assistants/default_assistant/agents" \
+    -d '{
+      "displayName": "Hello World GKE",
+      "description": "Greets users and provides personalized greetings via GKE and Agent Gateway in '"${PROJECT_ID}"'",
+      "importedAgent": {
+        "agent": "'"${AGENT_REGISTRY_URN}"'"
+      },
+      "a2aAgentDefinition": {
+        "jsonAgentCard": "'"$(cat "${AGENT_CARD_FILE}" | jq -c . | jq -R . | sed 's/^"//; s/"$//')"' "
+      }
+    }')
+fi
 
 echo "Import Response: ${IMPORT_RESPONSE}"
 

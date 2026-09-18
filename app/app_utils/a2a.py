@@ -33,6 +33,7 @@ from a2a.utils.constants import (
     AGENT_CARD_WELL_KNOWN_PATH,
     EXTENDED_AGENT_CARD_PATH,
 )
+from fastapi.responses import JSONResponse
 from google.adk.a2a.executor.a2a_agent_executor import A2aAgentExecutor
 from google.adk.a2a.utils.agent_card_builder import AgentCardBuilder
 
@@ -105,3 +106,10 @@ async def attach_a2a_routes(
         rpc_url=rpc_path,
         extended_agent_card_url=f"{rpc_path}{EXTENDED_AGENT_CARD_PATH}",
     )
+
+    # Expose root agent card endpoint for GKE in-cluster auto-registration discovery
+    card_dict = agent_card.model_dump(mode="json", exclude_none=True, by_alias=True)
+
+    @app.get(AGENT_CARD_WELL_KNOWN_PATH, include_in_schema=False)
+    async def get_root_agent_card() -> JSONResponse:
+        return JSONResponse(content=card_dict)

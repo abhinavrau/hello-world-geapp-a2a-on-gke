@@ -71,10 +71,21 @@ gcloud network-services agent-gateways describe "${GATEWAY_NAME}" \
 
 echo ""
 echo "--- [3/5] Checking Agent Registry (${PROJECT_ID}) ---"
+echo "Auto-Registered Agents (GKE Ingestion in ${GKE_REGION} / global):"
+curl -s -H "Authorization: Bearer ${AUTH_TOKEN}" \
+  -H "X-Goog-User-Project: ${PROJECT_ID}" \
+  "https://agentregistry.googleapis.com/v1alpha/projects/${PROJECT_ID}/locations/${GKE_REGION}/agents" \
+  | jq -r '.agents[]? | {name: .name, displayName: .displayName, description: .description}' 2>/dev/null || true
+curl -s -H "Authorization: Bearer ${AUTH_TOKEN}" \
+  -H "X-Goog-User-Project: ${PROJECT_ID}" \
+  "https://agentregistry.googleapis.com/v1alpha/projects/${PROJECT_ID}/locations/global/agents" \
+  | jq -r '.agents[]? | select(.name | contains("workspace") | not) | {name: .name, displayName: .displayName, description: .description}' 2>/dev/null || true
+
+echo "Explicit Services in Registry:"
 gcloud alpha agent-registry services describe "${PROJECT_NAME}" \
   --location="${GKE_REGION}" \
   --project="${PROJECT_ID}" \
-  --format="yaml(name,interfaces,registryResource)" || echo "Warning: Agent Registry service describe failed."
+  --format="yaml(name,interfaces,registryResource)" 2>/dev/null || echo "Notice: Explicit Agent Registry service '${PROJECT_NAME}' not found (using auto-registered Agent)."
 
 echo ""
 echo "--- [4/5] Retrieving Gemini Enterprise Assistant Agent ID ---"

@@ -39,7 +39,7 @@ Separates the **Workload Project** (GKE cluster, VPC, Regional Internal ALB, TLS
 | **Network Boundary** | Shared local VPC | Cross-project PSC interface with `ACCEPT_MANUAL` producer whitelisting |
 | **IAM Trust Boundary** | Internal project service agents | Scoped cross-project `roles/compute.networkUser` grants |
 | **Terraform Configuration** | `deployment/terraform/single-project` | `deployment/terraform/multi-project` (dual aliased providers) |
-| **Registration Workflow** | Automated script (`scripts/register_single_project.sh`) | Automated script (`scripts/register_multi_project.sh`) |
+| **Registration Workflow** | In-cluster GKE auto-registration (`registry.gke.io/functional-type: "AGENT"`) + GE binding script (`scripts/register_single_project.sh`) | Local GKE auto-registration (Workload Project) + cross-project registration script (`scripts/register_multi_project.sh`) |
 
 ---
 
@@ -55,8 +55,8 @@ Separates the **Workload Project** (GKE cluster, VPC, Regional Internal ALB, TLS
    Google Agent Gateway validates TLS certificates against trusted public CAs. Regional Google-managed certificates are provisioned via Certificate Manager with automated DNS-01 authorizations in Cloud DNS directly in Terraform.
 5. **Agent Gateway & DNS Architecture**:
    The Agent Gateway uses a Private Service Connect (PSC) network attachment for VPC egress and resolves public DNS records natively through Google's public resolver while routing payloads through private VPC interfaces.
-6. **Agent Registry & Discovery Engine**:
-   The A2A endpoint is cataloged in Agent Registry and linked to Gemini Enterprise (`importedAgent`), enabling native conversational invocation.
+6. **GKE In-Cluster Agent Auto-Registration & Dynamic Skill Discovery**:
+   Workloads on GKE Autopilot are annotated with `registry.gke.io/functional-type: "AGENT"` and `a2a-protocol.org/agent-card` per the [Google Cloud Agent Registry GKE Auto-Registration specification](https://docs.cloud.google.com/agent-registry/automatic-registration#gke). The GKE runtime controller introspects `/.well-known/agent-card.json` directly from the pod on port 8080 to dynamically register the agent and its live skills into Google Cloud Agent Registry, eliminating configuration drift when tools change.
 
 ---
 
@@ -83,7 +83,7 @@ Separates the **Workload Project** (GKE cluster, VPC, Regional Internal ALB, TLS
 │   ├── architecture/
 │   │   ├── single-project.md               # Detailed single-project flowchart & operational runbook
 │   │   └── multi-project.md                # Detailed multi-project flowchart & operational runbook
-│   ├── adr/                                # Architectural Decision Records (0001, 0002, 0003)
+│   ├── adr/                                # Architectural Decision Records (0001, 0002, 0003, 0004)
 │   └── production-security-guide.md        # Hardening guide (Active IAP, Model Armor, VPC-SC)
 ├── scripts/
 │   ├── register_single_project.sh          # Automated single-project registration in Agent Registry & GE
@@ -111,7 +111,8 @@ cd ../../..
 IMAGE_URI="us-central1-docker.pkg.dev/${PROJECT_ID}/hello-world-a2a/hello-world-a2a:v1"
 gcloud builds submit --project="${PROJECT_ID}" --tag "${IMAGE_URI}" .
 
-# 3. Register Service in Agent Registry & Gemini Enterprise
+# 3. Bind Auto-Registered Agent to Gemini Enterprise
+# (GKE controller auto-registers the agent and dynamic skills; this script links it to GE)
 ./scripts/register_single_project.sh
 
 # 4. Run End-to-End Validation
@@ -135,7 +136,8 @@ cd ../../..
 IMAGE_URI="us-central1-docker.pkg.dev/${WORKLOAD_PROJECT_ID}/hello-world-a2a/hello-world-a2a:v1"
 gcloud builds submit --project="${WORKLOAD_PROJECT_ID}" --tag "${IMAGE_URI}" .
 
-# 3. Register Service across Projects
+# 3. Register Service across Projects & Bind to Gemini Enterprise
+# (GKE auto-registers in Workload Project; this script bridges cataloging to Consumer Project & GE)
 ./scripts/register_multi_project.sh
 
 # 4. Run End-to-End Validation
@@ -150,10 +152,12 @@ gcloud builds submit --project="${WORKLOAD_PROJECT_ID}" --tag "${IMAGE_URI}" .
 - 📖 **[Single-Project Architecture Guide](docs/architecture/single-project.md)**: Deep-dive flowchart, packet flow sequence, and single-project runbook.
 - 📖 **[Multi-Project Architecture Guide](docs/architecture/multi-project.md)**: Deep-dive flowchart, cross-project PSC security model, and multi-project runbook.
 - 🛡️ **[Production Security & Authorization Guide](docs/production-security-guide.md)**: Enforcing active IAP, Model Armor content filtering, mTLS, and VPC Service Controls.
+- 🌐 **[Google Cloud Agent Registry: Automatic Registration on GKE](https://docs.cloud.google.com/agent-registry/automatic-registration#gke)**: Official documentation on GKE in-cluster workload introspection and agent registration.
 - 📐 **Architectural Decision Records (ADRs)**:
   - [ADR 0001: Modular Terraform & Certificate Manager](docs/adr/0001-modular-terraform-and-certificate-manager.md)
   - [ADR 0002: Internal ALB & Dynamic Multi-Zone NEGs](docs/adr/0002-internal-alb-and-dns-design.md)
   - [ADR 0003: Multi-Project Agent Gateway Architecture](docs/adr/0003-multi-project-agent-gateway.md)
+  - [ADR 0004: GKE In-Cluster Agent Auto-Registration & Dynamic Skill Discovery](docs/adr/0004-gke-agent-auto-registration.md)
 
 ---
 

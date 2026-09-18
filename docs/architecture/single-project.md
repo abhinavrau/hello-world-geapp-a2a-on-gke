@@ -20,7 +20,7 @@ In a single-project deployment, all foundational resources—including the GKE c
 flowchart TD
     subgraph GE["Gemini Enterprise (Discovery Engine)"]
         User(["👤 User Chat / StreamAssist"]) --> Assistant["GE App (Discovery Engine)"]
-        Assistant -->|1. Imported Agent Resolution| AgentReg["Agent Registry<br><i>projects/PROJECT_ID/locations/global</i>"]
+        Assistant -->|1. Imported Agent Resolution| AgentReg["Agent Registry<br><i>projects/PROJECT_ID/locations/us-central1/agents</i>"]
         Assistant -->|2. Envoy SWP Routing| AGW["Agent Gateway (Egress)<br><b>Region: us-central1</b><br>• Direct Public DNS Resolution<br>• Public TLS Trust Store<br>• IAP Authz Policy (DRY_RUN)"]
     end
 
@@ -42,10 +42,12 @@ flowchart TD
             end
 
             subgraph GKECluster["GKE Autopilot Cluster (hello-world-a2a)"]
+                Ctrl["GKE App Hub / Agent Controller<br><i>registry.gke.io/functional-type: AGENT</i>"]
                 NEG["Standalone NEGs (Multi-Zone)<br><i>hello-world-a2a-neg</i>"]
-                Pod1["A2A Pod (Zone us-central1-a)<br><i>Port 8080</i>"]
-                Pod2["A2A Pod (Zone us-central1-b)<br><i>Port 8080</i>"]
+                Pod1["A2A Pod (Zone us-central1-a)<br><i>Port 8080</i><br><code>APP_URL=https://DOMAIN_NAME</code>"]
+                Pod2["A2A Pod (Zone us-central1-b)<br><i>Port 8080</i><br><code>APP_URL=https://DOMAIN_NAME</code>"]
 
+                Ctrl -.->|In-Cluster Scrape: /.well-known/agent-card.json| Pod1
                 BackendSvc -->|Direct Pod IP Routing| NEG
                 NEG --> Pod1
                 NEG --> Pod2
@@ -55,6 +57,7 @@ flowchart TD
         DNS["Cloud DNS Managed Zone (your-dns-zone-name)<br><i>DOMAIN_NAME ➔ 10.0.0.10 (ALB VIP)</i><br><i>_acme-challenge.DOMAIN_NAME ➔ CNAME DNS Auth</i>"]
     end
 
+    Ctrl ==>|Auto-Registration & Dynamic Skill Discovery| AgentReg
     AGW -->|3. PSC Egress Interface Attachment| NetAttach
     AGW -.->|Public DNS Resolution| DNS
     NetAttach -->|4. Global VPC Backbone Routing| FWR
@@ -64,6 +67,7 @@ flowchart TD
 
 ## 🔍 Request Traversal Sequence
 
+0. **In-Cluster Agent Auto-Registration**: Upon Pod deployment, the GKE cluster runtime controller detects the `registry.gke.io/functional-type: "AGENT"` label and `a2a-protocol.org/agent-card` annotation. It scrapes `/.well-known/agent-card.json` on port 8080 directly from the pod and dynamically registers the agent with its live skills in Google Cloud Agent Registry (`projects/<PROJECT_ID>/locations/<GKE_REGION>/agents/<AGENT_ID>`).
 1. **User Invocation**: A licensed user sends a chat message or calls the Discovery Engine `StreamAssist` API targeting the assistant.
 2. **Imported Agent Lookup**: The Discovery Engine Assistant resolves the agent binding via **Agent Registry** (`importedAgent.agent`), loading the A2A agent card metadata and target URL (`https://<DOMAIN_NAME>/a2a/app`).
 3. **Egress Gateway Routing**: Discovery Engine matches the domain against the configured `defaultEgressAgentGateway` in `us-central1`. The Agent Gateway resolves `<DOMAIN_NAME>` via public DNS to `10.0.0.10`.
@@ -187,7 +191,9 @@ This deploys 9 modular phases:
 
 ### Step 3: Register Agent into Gemini Enterprise
 
-You can execute the automated single-project registration script, or perform the manual steps below:
+In single-project deployments, the GKE cluster runtime controller automatically discovers the workload via `registry.gke.io/functional-type: "AGENT"` and queries `a2a-protocol.org/agent-card` to index the live agent skills directly into **Agent Registry** (`projects/${PROJECT_ID}/locations/global/agents/...`).
+
+Execute the automated single-project registration script to bind the auto-registered agent to Gemini Enterprise:
 
 #### Automated Registration (Recommended)
 
@@ -196,19 +202,74 @@ You can execute the automated single-project registration script, or perform the
 ```
 
 This automated script:
-1. Creates or updates the Service in **Agent Registry** (`${PROJECT_ID}`).
+1. Detects and queries the auto-registered **`Agent`** in **Agent Registry** (with bounded polling for controller reconciliation), or falls back to explicit `Service` registration if needed.
 2. Patches the Discovery Engine Engine in `${PROJECT_ID}` to point `defaultEgressAgentGateway` to the Agent Gateway.
-3. Generates the A2A Agent Card JSON referencing `https://${DOMAIN_NAME}/a2a/app`.
-4. Imports the agent into the Discovery Engine Assistant (`default_assistant`).
+3. Imports the agent into the Discovery Engine Assistant (`default_assistant`) referencing the Agent Registry URN.
 
 ---
 
 #### Manual Registration Alternative
 
-##### 1. Register the Service in Agent Registry
+##### Option 1: Bind the Auto-Registered GKE Agent (Recommended)
 
-```bash
-gcloud alpha agent-registry services create "${PROJECT_NAME}" \
+When using GKE auto-registration, the cluster controller automatically registers the agent in the cluster's region (`${GKE_REGION}`).
+
+1. Retrieve the auto-registered Agent Resource URN:
+   ```bash
+   AGENT_REGISTRY_URN=$(gcloud alpha agent-registry agents list \
+     --location="${GKE_REGION}" \
+     --project="${PROJECT_ID}" \
+     --format="value(name)" | head -n 1)
+   echo "Auto-Registered Agent URN: ${AGENT_REGISTRY_URN}"
+   ```
+
+2. (Optional) Inspect the live skills discovered by GKE:
+   ```bash
+   gcloud alpha agent-registry agents describe "${AGENT_REGISTRY_URN}" \
+     --location="${GKE_REGION}" \
+     --project="${PROJECT_ID}"
+   ```
+
+3. Configure Discovery Engine to route through Agent Gateway and import the agent:
+   ```bash
+   # Configure Agent Gateway on Discovery Engine
+   curl -s -X PATCH \
+     -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+     -H "X-Goog-User-Project: ${PROJECT_ID}" \
+     -H "Content-Type: application/json" \
+     "https://discoveryengine.googleapis.com/v1alpha/projects/${PROJECT_NUM}/locations/global/collections/default_collection/engines/${ENGINE_ID}?updateMask=agentGatewaySetting" \
+     -d '{
+       "agentGatewaySetting": {
+         "defaultEgressAgentGateway": {
+           "name": "projects/'"${PROJECT_ID}"'/locations/'"${GATEWAY_REGION}"'/agentGateways/'"${GATEWAY_NAME}"'"
+         }
+       }
+     }'
+
+   # Import the Auto-Registered Agent into the Assistant
+   curl -s -X POST \
+     -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+     -H "X-Goog-User-Project: ${PROJECT_ID}" \
+     -H "Content-Type: application/json" \
+     "https://discoveryengine.googleapis.com/v1alpha/projects/${PROJECT_NUM}/locations/global/collections/default_collection/engines/${ENGINE_ID}/assistants/default_assistant/agents" \
+     -d '{
+       "displayName": "Hello World GKE",
+       "description": "Greets users and provides personalized greetings via GKE and Agent Gateway",
+       "importedAgent": {
+         "agent": "'"${AGENT_REGISTRY_URN}"'"
+       }
+     }'
+   ```
+
+---
+
+##### Option 2: Explicit Service Registration Fallback
+
+If GKE auto-registration is disabled or cluster controller reconciliation has not yet completed:
+
+1. Register the Service in Agent Registry:
+   ```bash
+   gcloud alpha agent-registry services create "${PROJECT_NAME}" \
      --location="${GKE_REGION}" \
      --display-name="Hello World A2A Service" \
      --description="GKE Hosted A2A Service" \
@@ -226,27 +287,7 @@ gcloud alpha agent-registry services create "${PROJECT_NAME}" \
    echo "Agent Registry URN: ${AGENT_REGISTRY_URN}"
    ```
 
----
-
-##### 2. Configure Gateway & Import Agent in Gemini Enterprise
-
-a. Configure the Agent Gateway on Discovery Engine:
-   ```bash
-   curl -s -X PATCH \
-     -H "Authorization: Bearer $(gcloud auth print-access-token)" \
-     -H "X-Goog-User-Project: ${PROJECT_ID}" \
-     -H "Content-Type: application/json" \
-     "https://discoveryengine.googleapis.com/v1alpha/projects/${PROJECT_NUM}/locations/global/collections/default_collection/engines/${ENGINE_ID}?updateMask=agentGatewaySetting" \
-     -d '{
-       "agentGatewaySetting": {
-         "defaultEgressAgentGateway": {
-           "name": "projects/'"${PROJECT_ID}"'/locations/'"${GATEWAY_REGION}"'/agentGateways/'"${GATEWAY_NAME}"'"
-         }
-       }
-     }'
-   ```
-
-2. Generate the Agent Card JSON:
+3. Import the Service into Discovery Engine with an explicit Agent Card:
    ```bash
    cat << 'EOF' > /tmp/agent_card.json
    {
@@ -286,10 +327,7 @@ a. Configure the Agent Gateway on Discovery Engine:
    EOF
 
    sed -i "s/DOMAIN_PLACEHOLDER/${DOMAIN_NAME}/g" /tmp/agent_card.json
-   ```
 
-3. Import the Agent into the Discovery Engine Assistant:
-   ```bash
    curl -s -X POST \
      -H "Authorization: Bearer $(gcloud auth print-access-token)" \
      -H "X-Goog-User-Project: ${PROJECT_ID}" \
@@ -430,3 +468,8 @@ terraform destroy -auto-approve
 ### 5. Agent Gateway Default-Deny Posture
 - **The Issue**: Egress Agent Gateways (`AGENT_TO_ANYWHERE`) enforce a default-deny posture. Requests fail with `HTTP Error 403: Access denied` (`matchedRules: [{"action": "DENIED", "name": "default_denied"}]`) unless an authorization policy is attached.
 - **The Solution**: `modules/agent-gateway` attaches an IAP Request Authorization Extension in `DRY_RUN` mode (`fail_open = true`, `iamEnforcementMode: "DRY_RUN"`), allowing connectivity while logging evaluations until production enforcement is enabled.
+
+### 6. GKE In-Cluster Agent Auto-Registration & Dynamic Skill Discovery
+- **The Mechanism**: The GKE cluster runtime controller watches Kubernetes workloads. When a deployment is labeled with `registry.gke.io/functional-type: "AGENT"` and annotated with `a2a-protocol.org/agent-card`, the controller automatically queries the Pod locally on port 8080 at the specified endpoint (`/.well-known/agent-card.json`). It ingests the returned agent specification and registers it as an `Agent` in Google Cloud Agent Registry in the cluster's region (`projects/${PROJECT_ID}/locations/${GKE_REGION}/agents/...`).
+- **The `APP_URL` Environment Invariant**: By default, local agents might advertise `localhost:8080` or internal pod IPs in their agent cards. When Gemini Enterprise calls the agent via Agent Gateway, it requires an externally resolvable HTTPS domain. Injecting `APP_URL = "https://${var.domain_name}"` into the container environment ensures the introspected agent card advertises `https://${DOMAIN_NAME}/a2a/app` as its public URL.
+- **Elimination of Skill Drift**: Whenever developers add, update, or remove tools or skills in `app/agent.py`, redeploying the container updates the introspected card automatically. The GKE controller syncs these changes to Agent Registry without requiring manual CLI registration scripts or schema patching.

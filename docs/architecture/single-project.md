@@ -92,21 +92,47 @@ flowchart TD
 
 ## ⚙️ Environment Configuration Reference
 
-Create `.env` in the repository root:
+For single-project deployments, initialize your local `.env` from the provided single-project template:
 
 ```bash
-PROJECT_ID="your-project-id"                                   # GCP Project ID
-PROJECT_NUM="your-project-number"                               # GCP Project Number
-GKE_REGION="us-central1"                                        # Workload region (GKE and ALB)
-GATEWAY_REGION="us-central1"                                   # Egress gateway region
-GATEWAY_NAME="hello-world-a2a-egress-gateway"                  # Agent Gateway name
-DOMAIN_NAME="hello-world-a2a.yourdomain.com"                   # Fully qualified domain name
-DNS_ZONE_NAME="your-dns-zone-name"                             # Cloud DNS zone name
-DNS_PROJECT_ID="your-dns-project-id"                           # Project hosting Cloud DNS zone
-ALB_INTERNAL_IP="10.0.0.10"                                    # Reserved private VIP for ALB
-ENGINE_ID="your-gemini-enterprise-app-id"                      # Discovery Engine App/Engine ID
-PROJECT_NAME="hello-world-a2a"                                 # Resource naming prefix
-IMAGE_TAG="v1"                                                 # Container image tag
+cp .env.single-project.example .env
+```
+
+### Environment Variables Breakdown
+
+| Variable | Requirement | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `PROJECT_ID` | **Required** | — | Single GCP Project hosting GKE, ALB, and Gemini Enterprise |
+| `PROJECT_NUM` | **Required** | — | Numeric Project Number (required for Discovery Engine REST APIs) |
+| `DOMAIN_NAME` | **Required** | — | Fully qualified domain name pointing to Regional Internal ALB VIP |
+| `DNS_ZONE_NAME` | **Required** | — | Cloud DNS managed zone name (for ALB `A` record and DNS-01 ACME challenge) |
+| `ENGINE_ID` | **Required** | — | Discovery Engine App / Engine ID in Gemini Enterprise |
+| `DNS_PROJECT_ID` | Optional | `${PROJECT_ID}` | Project hosting Cloud DNS zone (defaults to `PROJECT_ID`) |
+| `GKE_REGION` | Optional | `us-central1` | Workload and ALB region (must match `GATEWAY_REGION`) |
+| `GATEWAY_REGION` | Optional | `us-central1` | Egress Agent Gateway region (must match `GKE_REGION`) |
+| `GATEWAY_NAME` | Optional | `hello-world-a2a-egress-gateway` | Egress Agent Gateway resource name |
+| `ALB_INTERNAL_IP` | Optional | `10.0.0.10` | Reserved private RFC 1918 VIP assigned to Regional Internal ALB |
+| `PROJECT_NAME` | Optional | `hello-world-a2a` | Common resource prefix for cluster, certs, and NEGs |
+| `IMAGE_TAG` | Optional | `v1` | Container image version tag |
+
+### Example `.env` File
+
+```bash
+# --- REQUIRED ---
+PROJECT_ID="your-project-id"
+PROJECT_NUM="your-project-number"
+DOMAIN_NAME="hello-world-a2a.yourdomain.com"
+DNS_ZONE_NAME="your-dns-zone-name"
+ENGINE_ID="your-gemini-enterprise-app-id"
+
+# --- OPTIONAL / DEFAULTS ---
+DNS_PROJECT_ID="${PROJECT_ID}"
+GKE_REGION="us-central1"
+GATEWAY_REGION="us-central1"
+GATEWAY_NAME="hello-world-a2a-egress-gateway"
+ALB_INTERNAL_IP="10.0.0.10"
+PROJECT_NAME="hello-world-a2a"
+IMAGE_TAG="v1"
 ```
 
 Load the variables into your shell session:

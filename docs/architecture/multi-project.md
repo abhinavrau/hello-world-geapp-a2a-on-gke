@@ -99,26 +99,47 @@ The multi-project design establishes a zero-trust cross-project boundary:
 
 ## ⚙️ Environment Configuration
 
-Create or update `.env` in the repository root:
+For multi-project deployments, initialize your local `.env` from the provided multi-project template:
 
 ```bash
-# Workload Project Configuration (Project A)
-WORKLOAD_PROJECT_ID="your-workload-project-id"
-WORKLOAD_PROJECT_NUM="your-workload-project-num"
+cp .env.multi-project.example .env
+```
 
-# Consumer Project Configuration (Project B)
+### Environment Variables Breakdown
+
+| Variable | Requirement | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `WORKLOAD_PROJECT_ID` | **Required** | — | Project A hosting GKE cluster, VPC, ALB, Certs, and PSC Network Attachment |
+| `CONSUMER_PROJECT_ID` | **Required** | — | Project B hosting Discovery Engine App, Agent Gateway, and Catalog |
+| `CONSUMER_PROJECT_NUM` | **Required** | — | Numeric Project Number for Project B (required for Discovery Engine REST APIs) |
+| `DOMAIN_NAME` | **Required** | — | Fully qualified domain name pointing to Regional Internal ALB VIP |
+| `DNS_ZONE_NAME` | **Required** | — | Cloud DNS managed zone name (for ALB `A` record and DNS-01 ACME challenge) |
+| `ENGINE_ID` | **Required** | — | Discovery Engine App / Engine ID in Consumer Project B |
+| `DNS_PROJECT_ID` | Optional | `CONSUMER_PROJECT_ID` | Project hosting Cloud DNS zone (defaults to Project B) |
+| `GKE_REGION` | Optional | `us-central1` | Workload and ALB region in Project A (must match `GATEWAY_REGION`) |
+| `GATEWAY_REGION` | Optional | `us-central1` | Gateway region in Project B (must match `GKE_REGION` for PSC data plane) |
+| `GATEWAY_NAME` | Optional | `hello-world-a2a-egress-gateway` | Egress Agent Gateway resource name in Project B |
+| `ALB_INTERNAL_IP` | Optional | `10.0.0.6` | Reserved private RFC 1918 VIP assigned to ALB in Project A |
+| `PROJECT_NAME` | Optional | `hello-world-a2a` | Common resource prefix for cluster, certs, and NEGs |
+| `IMAGE_TAG` | Optional | `v1` | Container image version tag |
+
+### Example `.env` File
+
+```bash
+# --- REQUIRED ---
+WORKLOAD_PROJECT_ID="your-workload-project-id"
 CONSUMER_PROJECT_ID="your-consumer-project-id"
 CONSUMER_PROJECT_NUM="your-consumer-project-num"
-DNS_PROJECT_ID="your-consumer-project-id"
+DOMAIN_NAME="hello-world-a2a.yourdomain.com"
+DNS_ZONE_NAME="your-dns-zone-name"
+ENGINE_ID="your-gemini-enterprise-app-id"
 
-# Regional Infrastructure Settings
+# --- OPTIONAL / DEFAULTS ---
+DNS_PROJECT_ID="your-consumer-project-id"
 GKE_REGION="us-central1"
 GATEWAY_REGION="us-central1"
 GATEWAY_NAME="hello-world-a2a-egress-gateway"
-DOMAIN_NAME="hello-world-a2a.yourdomain.com"
-DNS_ZONE_NAME="your-dns-zone-name"
 ALB_INTERNAL_IP="10.0.0.6"
-ENGINE_ID="hello-world-a2a"
 PROJECT_NAME="hello-world-a2a"
 IMAGE_TAG="v1"
 ```

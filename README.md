@@ -41,6 +41,30 @@ Separates the **Workload Project** (GKE cluster, VPC, Regional Internal ALB, TLS
 | **Terraform Configuration** | `deployment/terraform/single-project` | `deployment/terraform/multi-project` (dual aliased providers) |
 | **Registration Workflow** | In-cluster GKE auto-registration (`registry.gke.io/functional-type: "AGENT"`) + GE binding script (`scripts/register_single_project.sh`) | Local GKE auto-registration (Workload Project) + cross-project registration script (`scripts/register_multi_project.sh`) |
 
+### ⚙️ Environment Variables Reference Matrix
+
+The table below details all environment variables used by Terraform, Cloud Build, deployment commands, and registration/validation scripts:
+
+| Environment Variable | Single-Project | Multi-Project | Default Value | Used By | Description |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `PROJECT_ID` | **Required** | *Not Used* | — | Terraform, Build, Scripts | Main GCP project hosting GKE, ALB, and Gemini Enterprise |
+| `PROJECT_NUM` | **Required** | *Not Used* | — | Scripts (`register`, `validate`) | Numeric project number (required for Discovery Engine REST APIs) |
+| `WORKLOAD_PROJECT_ID` | *Not Used* | **Required** | — | Terraform, Build, Scripts | Project A hosting GKE cluster, VPC, ALB, and PSC Network Attachment |
+| `CONSUMER_PROJECT_ID` | *Not Used* | **Required** | — | Terraform, Scripts | Project B hosting Discovery Engine App, Agent Gateway, and Catalog |
+| `CONSUMER_PROJECT_NUM` | *Not Used* | **Required** | — | Scripts (`register`, `validate`) | Numeric project number of Project B for Discovery Engine REST APIs |
+| `DOMAIN_NAME` | **Required** | **Required** | — | Terraform, Pod Env, Scripts | Fully qualified domain name pointing to Regional Internal ALB VIP |
+| `DNS_ZONE_NAME` | **Required** | **Required** | — | Terraform | Cloud DNS managed zone name (for ALB `A` record and DNS-01 ACME cert challenge) |
+| `DNS_PROJECT_ID` | Optional | Optional | `PROJECT_ID` / `CONSUMER_PROJECT_ID` | Terraform | Project hosting the Cloud DNS zone |
+| `ENGINE_ID` | **Required** | **Required** | — | Scripts (`register`, `validate`) | Discovery Engine App / Engine ID in Gemini Enterprise |
+| `ALB_INTERNAL_IP` | Optional | Optional | `10.0.0.10` (Single) / `10.0.0.6` (Multi) | Terraform | Reserved private RFC 1918 VIP assigned to Regional Internal ALB |
+| `GKE_REGION` | Optional | Optional | `us-central1` | Terraform, Build, Scripts | Workload region (must match `GATEWAY_REGION` for PSC dynamic interface) |
+| `GATEWAY_REGION` | Optional | Optional | `us-central1` | Terraform, Scripts | Egress Agent Gateway region (must match `GKE_REGION`) |
+| `GATEWAY_NAME` | Optional | Optional | `hello-world-a2a-egress-gateway` | Terraform, Scripts | Egress Agent Gateway resource name |
+| `PROJECT_NAME` | Optional | Optional | `hello-world-a2a` | Terraform, Scripts | Common resource naming prefix for cluster, certs, and NEGs |
+| `IMAGE_TAG` | Optional | Optional | `v1` | Cloud Build, Kubectl | Container image version tag |
+
+👉 *Template files are provided in the repository root: [`.env.single-project.example`](.env.single-project.example) and [`.env.multi-project.example`](.env.multi-project.example).*
+
 ---
 
 ## 🏛️ Key Technical Pillars
@@ -64,6 +88,8 @@ Separates the **Workload Project** (GKE cluster, VPC, Regional Internal ALB, TLS
 
 ```
 .
+├── .env.single-project.example             # Environment template for single-project stack
+├── .env.multi-project.example              # Environment template for multi-project stack
 ├── app/                                    # A2A Agent application source code (FastAPI, ADK, JSON-RPC)
 ├── deployment/
 │   ├── terraform/
@@ -101,14 +127,20 @@ Separates the **Workload Project** (GKE cluster, VPC, Regional Internal ALB, TLS
 For local sandboxes and self-contained testing within a single GCP project:
 
 ```bash
+# 0. Configure Environment
+cp .env.single-project.example .env
+# Edit .env with your PROJECT_ID, PROJECT_NUM, DOMAIN_NAME, DNS_ZONE_NAME, ENGINE_ID
+set -a && source .env && set +a
+
 # 1. Provision Single-Project Infrastructure
 cd deployment/terraform/single-project
 cp terraform.tfvars.example terraform.tfvars
+# Update terraform.tfvars to match your .env configuration
 terraform init && terraform apply -auto-approve
 
 # 2. Build & Deploy Container Image
 cd ../../..
-IMAGE_URI="us-central1-docker.pkg.dev/${PROJECT_ID}/hello-world-a2a/hello-world-a2a:v1"
+IMAGE_URI="${GKE_REGION}-docker.pkg.dev/${PROJECT_ID}/${PROJECT_NAME}/${PROJECT_NAME}:${IMAGE_TAG}"
 gcloud builds submit --project="${PROJECT_ID}" --tag "${IMAGE_URI}" .
 
 # 3. Bind Auto-Registered Agent to Gemini Enterprise
@@ -126,14 +158,20 @@ gcloud builds submit --project="${PROJECT_ID}" --tag "${IMAGE_URI}" .
 For enterprise architectures separating workload hosting from Gemini Enterprise:
 
 ```bash
+# 0. Configure Environment
+cp .env.multi-project.example .env
+# Edit .env with WORKLOAD_PROJECT_ID, CONSUMER_PROJECT_ID, CONSUMER_PROJECT_NUM, DOMAIN_NAME, etc.
+set -a && source .env && set +a
+
 # 1. Provision Multi-Project Infrastructure (Workload + Consumer Projects)
 cd deployment/terraform/multi-project
 cp terraform.tfvars.example terraform.tfvars
+# Update terraform.tfvars to match your .env configuration
 terraform init && terraform apply -auto-approve
 
 # 2. Build & Deploy Container Image to Workload Project
 cd ../../..
-IMAGE_URI="us-central1-docker.pkg.dev/${WORKLOAD_PROJECT_ID}/hello-world-a2a/hello-world-a2a:v1"
+IMAGE_URI="${GKE_REGION}-docker.pkg.dev/${WORKLOAD_PROJECT_ID}/${PROJECT_NAME}/${PROJECT_NAME}:${IMAGE_TAG}"
 gcloud builds submit --project="${WORKLOAD_PROJECT_ID}" --tag "${IMAGE_URI}" .
 
 # 3. Register Service across Projects & Bind to Gemini Enterprise

@@ -24,7 +24,10 @@ See [`README.md`](README.md) for full infrastructure architecture, deployment st
 ## Authentication and Environment
 
 1. **Environment Initialization**:
+   Initialize `.env` from the topology template ([`.env.single-project.example`](.env.single-project.example) or [`.env.multi-project.example`](.env.multi-project.example)):
    ```bash
+   # Single-Project: cp .env.single-project.example .env
+   # Multi-Project:  cp .env.multi-project.example .env
    set -a && source .env && set +a
    ```
 2. **Access Token Export**:
